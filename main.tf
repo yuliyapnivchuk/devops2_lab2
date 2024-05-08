@@ -7,14 +7,33 @@ resource "aws_internet_gateway" "igw" {
   vpc_id = aws_vpc.vpc.id
 }
 
-data "aws_route_table" "vpc-rt" {
+resource "aws_eip" "nat-gw-eip" {
+  domain   = "vpc"
+}
+
+resource "aws_nat_gateway" "nat-gw" {
+  allocation_id     = aws_eip.nat-gw-eip.id
+  subnet_id         = aws_subnet.subnet_public_1.id
+}
+
+resource "aws_route_table" "vpc-rt-private" {
   vpc_id = aws_vpc.vpc.id
 }
 
-resource "aws_route" "internet_access" {
-  route_table_id         = data.aws_route_table.vpc-rt.id
+resource "aws_route_table" "vpc-rt-public" {
+  vpc_id = aws_vpc.vpc.id
+}
+
+resource "aws_route" "rt-public" {
+  route_table_id         = aws_route_table.vpc-rt-public.id
   destination_cidr_block = "0.0.0.0/0"
   gateway_id             = aws_internet_gateway.igw.id
+}
+
+resource "aws_route" "rt-private" {
+  route_table_id         = aws_route_table.vpc-rt-private.id
+  destination_cidr_block = "0.0.0.0/0"
+  nat_gateway_id             = aws_nat_gateway.nat-gw.id
 }
 
 data "aws_availability_zones" "available" {}
@@ -23,14 +42,52 @@ resource "aws_subnet" "subnet_1" {
   vpc_id                  = aws_vpc.vpc.id
   cidr_block              = "10.0.1.0/24"
   availability_zone       = data.aws_availability_zones.available.names[0]
-  map_public_ip_on_launch = true
+  map_public_ip_on_launch = false
+  depends_on              = [ aws_route_table.vpc-rt-private ]
 }
 
 resource "aws_subnet" "subnet_2" {
   vpc_id                  = aws_vpc.vpc.id
   cidr_block              = "10.0.2.0/24"
   availability_zone       = data.aws_availability_zones.available.names[1]
+  map_public_ip_on_launch = false
+  depends_on              = [ aws_route_table.vpc-rt-private ]
+}
+
+resource "aws_subnet" "subnet_public_1" {
+  vpc_id                  = aws_vpc.vpc.id
+  cidr_block              = "10.0.3.0/24"
+  availability_zone       = data.aws_availability_zones.available.names[0]
   map_public_ip_on_launch = true
+  depends_on              = [ aws_route_table.vpc-rt-public ]
+}
+
+resource "aws_subnet" "subnet_public_2" {
+  vpc_id                  = aws_vpc.vpc.id
+  cidr_block              = "10.0.4.0/24"
+  availability_zone       = data.aws_availability_zones.available.names[1]
+  map_public_ip_on_launch = true
+  depends_on              = [ aws_route_table.vpc-rt-public ]
+}
+
+resource "aws_route_table_association" "a" {
+  subnet_id      = aws_subnet.subnet_1.id
+  route_table_id = aws_route_table.vpc-rt-private.id
+}
+
+resource "aws_route_table_association" "b" {
+  subnet_id      = aws_subnet.subnet_2.id
+  route_table_id = aws_route_table.vpc-rt-private.id
+}
+
+resource "aws_route_table_association" "c" {
+  subnet_id      = aws_subnet.subnet_public_1.id
+  route_table_id = aws_route_table.vpc-rt-public.id
+}
+
+resource "aws_route_table_association" "d" {
+  subnet_id      = aws_subnet.subnet_public_2.id
+  route_table_id = aws_route_table.vpc-rt-public.id
 }
 
 # Security group for ALB
@@ -92,7 +149,7 @@ resource "aws_lb" "labs" {
   load_balancer_type = "application"
   internal           = false
   security_groups    = [aws_security_group.alb_sg.id]
-  subnets            = [aws_subnet.subnet_1.id,aws_subnet.subnet_2.id]
+  subnets            = [aws_subnet.subnet_public_1.id,aws_subnet.subnet_public_2.id]
 }
 
 # Create Target Group for ALB
