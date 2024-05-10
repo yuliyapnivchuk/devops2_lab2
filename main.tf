@@ -220,6 +220,8 @@ apt-get install -y nginx
 curl -s http://169.254.169.254/latest/meta-data/instance-id > /var/www/html/index.nginx-debian.html
 EOF
 )
+# TOKEN=`curl -X PUT "http://169.254.169.254/latest/api/token" -H "X-aws-ec2-metadata-token-ttl-seconds: 21600"` \
+# && curl -H "X-aws-ec2-metadata-token: $TOKEN" http://169.254.169.254/latest/meta-data/ > /var/www/html/index.nginx-debian.html
   vpc_security_group_ids = [aws_security_group.labs_lt_sg.id]
   key_name = var.ssh_key_name
   lifecycle {
